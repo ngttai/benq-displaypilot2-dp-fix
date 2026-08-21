@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=BenQ Display Pilot 2
+Comment=BenQ Display Pilot 2 - display and monitor control utility
+Exec=@HOME@/.local/bin/dp-display-pilot-2.sh %U
+Icon=@HOME@/.local/share/icons/BenQDisplayPilot.svg
+Terminal=false
+Categories=Utility;
+StartupNotify=false
+StartupWMClass=Display Pilot 2

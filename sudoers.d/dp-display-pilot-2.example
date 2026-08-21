@@ -1,0 +1,45 @@
+# Sudoers drop-in for dp-display-pilot-2.sh
+#
+# DO NOT copy this file directly into /etc/sudoers.d/. Always install sudoers
+# rules via `visudo` so the syntax gets validated before it's saved:
+#
+#   sudo visudo -f /etc/sudoers.d/dp-display-pilot-2
+#
+# then paste the line below (replace YOUR_USERNAME with your actual login,
+# e.g. via `whoami`).
+#
+# What this grants: passwordless `mount --bind` / `umount` on i2c device
+# nodes only (/dev/i2c-N), so dp-display-pilot-2.sh can bind-mount the
+# working DP AUX i2c bus onto the dead legacy DDC i2c bus without a password
+# prompt on every launch.
+#
+# Why the rule is written as an anchored regex (^...$) instead of a plain
+# /dev/i2c-* wildcard:
+#   Per `man sudoers`, a `*` wildcard in *command arguments* (unlike in the
+#   command path) also matches `/` and whitespace. A naive rule like:
+#     /usr/bin/mount --bind /dev/i2c-* /dev/i2c-*
+#   would therefore also match:
+#     sudo mount --bind /dev/i2c-6/../../etc/shadow /dev/i2c-8/../../root/.ssh/authorized_keys
+#   i.e. a full path-traversal root exploit disguised as an i2c bind mount.
+#   An anchored POSIX-ERE regex where the WHOLE argument string must begin
+#   with `^` (per sudoers: "If the arguments in a Cmnd begin with the '^'
+#   character, they will be interpreted as a regular expression") closes
+#   that hole, because `[0-9]+` cannot match `/` or `..`. Note `^` must be
+#   the very first character of the argument string - including the literal
+#   "--bind" flag inside the regex, not before it - or sudo silently falls
+#   back to literal/glob matching and the rule never matches (this bit us
+#   once: `mount --bind ^/dev/i2c-[0-9]+ ...` does NOT work; the `^` has to
+#   come before `--bind`).
+#
+# Residual tradeoff: this still authorizes bind-mounting ANY /dev/i2c-N onto
+# ANY other /dev/i2c-N, not just the specific pair the script happens to
+# need right now - because i2c bus numbers are not stable across
+# reboots/hotplug, so the script (and thus this rule) can't hardcode exact
+# numbers. Blast radius is bounded to i2c character-device nodes (no path
+# escape), but within that, a bug or misuse could still bind-mount over an
+# unrelated i2c bus in use by something else (e.g. a hwmon sensor or SMBus
+# device), recoverable with `umount` or a reboot. Tighter scoping would
+# require a separate root-owned argument-validating wrapper script instead
+# of a direct sudoers rule.
+
+YOUR_USERNAME ALL=(root) NOPASSWD: /usr/bin/mount ^--bind /dev/i2c-[0-9]+ /dev/i2c-[0-9]+$, /usr/bin/umount ^/dev/i2c-[0-9]+$
