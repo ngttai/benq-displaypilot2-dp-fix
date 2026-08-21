@@ -130,8 +130,15 @@ elif [ -n "$CONN" ]; then
 fi
 
 # --- 5. Launch ------------------------------------------------------------
-log "Launching Display Pilot 2 (QT_QPA_PLATFORM=xcb) ..."
-QT_QPA_PLATFORM=xcb "$APPIMAGE"
+# QT_QPA_PLATFORM defaults to wayland: running under XWayland (xcb) caused
+# Display Pilot 2's own output<->DRM-connector matching to mis-map a second
+# (HDMI) monitor onto the DP connector's i2c bus, showing it as a duplicate
+# "RD270Q" instead of the actual second monitor. Native wayland does not
+# have this bug on this system. Overridable by the caller if needed, e.g.:
+#   QT_QPA_PLATFORM=xcb ~/.local/bin/dp-display-pilot-2.sh
+export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland}"
+log "Launching Display Pilot 2 (QT_QPA_PLATFORM=$QT_QPA_PLATFORM) ..."
+"$APPIMAGE"
 status=$?
 log "Display Pilot 2 exited with status $status"
 exit "$status"

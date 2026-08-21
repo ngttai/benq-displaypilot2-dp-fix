@@ -133,7 +133,7 @@ Expected log output (numbers will vary by machine):
 [dp-display-pilot-2] DDC (legacy, dead): /dev/i2c-6   AUX (working): /dev/i2c-10
 [dp-display-pilot-2] Bind-mounting /dev/i2c-10 onto /dev/i2c-6 ...
 [dp-display-pilot-2] Bind mount OK.
-[dp-display-pilot-2] Launching Display Pilot 2 (QT_QPA_PLATFORM=xcb) ...
+[dp-display-pilot-2] Launching Display Pilot 2 (QT_QPA_PLATFORM=wayland) ...
 ```
 
 While the app is running: `mount | grep i2c-6` should show the bind mount. After quitting the
@@ -142,6 +142,33 @@ bind mount on /dev/i2c-...`.
 
 With the monitor on HDMI (or no DP connector plugged in), the script logs "No connected
 DisplayPort connector found" and launches normally without attempting a mount.
+
+## Known issue: duplicate monitor entries under XWayland
+
+If a second monitor is connected over HDMI alongside the DP one, Display Pilot 2 (run under
+XWayland, `QT_QPA_PLATFORM=xcb`) can show **two** entries for the DP monitor instead of one DP +
+one HDMI entry. Confirmed root cause via the app's own debug log:
+
+```
+[MonitorManager] match output "DP-1" to drm "card1-DP-1"
+[MonitorManager] match output "HDMI-1" to drm "card1-DP-1"      <- wrong, should be card1-HDMI-A-1
+[MonitorManager] map i2c port from system ddc folder "HDMI-1" "/dev/i2c-6"   <- wrong bus
+```
+
+Verified at the sysfs level that this is **not** caused by this repo's bind mount: `card1-DP-1`
+and `card1-HDMI-A-1` have completely separate ddc buses (`/dev/i2c-6` vs `/dev/i2c-9` on the test
+machine), and the launcher script only ever touches the DP connector's bus. The mis-mapping is
+inside Display Pilot 2's own closed-source output↔DRM-connector matching, most likely because it
+assumes the Qt/RandR output name (`"HDMI-1"`) is textually identical to the DRM connector name
+(`"HDMI-A-1"` — note the extra `-A-`), which happens to hold for DP but not HDMI on amdgpu. This
+bug was invisible before the DDC fix, since the DP connector's i2c bus used to be dead for
+everyone who queried it.
+
+**Fix:** run under native Wayland instead of XWayland — `dp-display-pilot-2.sh` defaults to
+`QT_QPA_PLATFORM=wayland` for exactly this reason (confirmed on this machine: duplicate entries
+disappear, DDC/CI control keeps working normally). If your setup needs XWayland for some other
+reason, override it back with `QT_QPA_PLATFORM=xcb ~/.local/bin/dp-display-pilot-2.sh` — you may
+just see the duplicate-entry quirk return.
 
 ## Troubleshooting
 
